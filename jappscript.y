@@ -2,59 +2,45 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#define MAX_VARS 100
 
-int yylex(void);
 void yyerror(const char *s);
+int yylex(void);
 
-// Tabla dinámica para variables
-typedef struct Variable {
-    char* nombre;
+typedef struct {
+    char nombre[64];
     int valor;
-    struct Variable* siguiente;
 } Variable;
 
-Variable* tabla_variables = NULL;
+Variable tabla_vars[MAX_VARS];
+int num_vars = 0;
 
-Variable* buscar_variable(const char* nombre) {
-    Variable* actual = tabla_variables;
-    while (actual != NULL) {
-        if (strcmp(actual->nombre, nombre) == 0) return actual;
-        actual = actual->siguiente;
+int buscar_variable(const char* nombre) {
+    for (int i = 0; i < num_vars; i++) {
+        if (strcmp(tabla_vars[i].nombre, nombre) == 0) return i;
     }
-    return NULL;
+    return -1;
+}
+
+int obtener_valor(const char* nombre) {
+    int idx = buscar_variable(nombre);
+    if (idx >= 0) return tabla_vars[idx].valor;
+    printf("→ Error: Variable '%s' no declarada. Se usa 0\n", nombre);
+    return 0;
 }
 
 void asignar_variable(const char* nombre, int valor) {
-    Variable* var = buscar_variable(nombre);
-    if (var != NULL) {
-        var->valor = valor;
+    int idx = buscar_variable(nombre);
+    if (idx >= 0) {
+        tabla_vars[idx].valor = valor;
     } else {
-        var = malloc(sizeof(Variable));
-        var->nombre = strdup(nombre);
-        var->valor = valor;
-        var->siguiente = tabla_variables;
-        tabla_variables = var;
-    }
-}
-
-int obtener_valor_variable(const char* nombre, int* existe) {
-    Variable* var = buscar_variable(nombre);
-    if (var != NULL) {
-        *existe = 1;
-        return var->valor;
-    } else {
-        *existe = 0;
-        return 0;
-    }
-}
-
-void liberar_variables() {
-    Variable* actual = tabla_variables;
-    while (actual != NULL) {
-        Variable* siguiente = actual->siguiente;
-        free(actual->nombre);
-        free(actual);
-        actual = siguiente;
+        if (num_vars < MAX_VARS) {
+            strcpy(tabla_vars[num_vars].nombre, nombre);
+            tabla_vars[num_vars].valor = valor;
+            num_vars++;
+        } else {
+            printf("→ Error: Límite de variables alcanzado\n");
+        }
     }
 }
 %}
@@ -66,57 +52,73 @@ void liberar_variables() {
 
 %token <num> NUMBER
 %token <id> ID
-%token EVALUAR ASSIGN
+
+%token IF ELSE
+%token DO WHILE
+%token INTEGER STRING VOID
+%token AND OR
+%token EQ NOEQ MEEQ MAEQ ME MA
+%token PRINT
+%token LPAREN RPAREN
+%token LLLAVE RLLAVE
+%token ASSIGN
+%token EVALUAR
+%token FUNCTION
+%token INPUT
+
+
 %left '+' '-'
 %left '*' '/'
+%left EQ NOEQ MEEQ MAEQ ME MA
 
-%type <num> expr stmt programa
+%type <num> expr
 
 %%
 
-programa:
-    programa stmt
-  | /* vacío */
-  ;
+program:
+    statements
+    ;
 
-stmt:
-    EVALUAR '(' expr ')' ';' {
-        printf("Resultado: %d\n", $3);
-    }
-  | ID ASSIGN expr ';' {
-        asignar_variable($1, $3);
-        free($1);
-    }
-  | expr ';' {
-        printf("Evaluar expr: %d\n", $1);
-    }
-  ;
+statements:
+      /* vacío */
+    | statements statement
+    ;
+
+statement:
+    
+      IF LPAREN expr RPAREN block                        { printf("→ IF sin else (cond: %d)\n", $3); }
+    | IF LPAREN expr RPAREN block ELSE block             { printf("→ IF con else (cond: %d)\n", $3); }
+    | INTEGER ID ASSIGN expr ';'                         { asignar_variable($2, $4); }
+    | ID ASSIGN expr ';'                                 { asignar_variable($1, $3);}
+    | PRINT LPAREN expr RPAREN ';'                       { printf("→ Imprimir: %d\n", $3); }
+    | INPUT LPAREN ID RPAREN ';' {
+        int val;
+        printf("Ingrese valor para %s: ", $3);
+        scanf("%d", &val);
+        asignar_variable($3, val);
+      }
+    ;
+
+block:
+      LLLAVE statements RLLAVE
+    ;
 
 expr:
-    expr '+' expr { $$ = $1 + $3; }
-  | expr '-' expr { $$ = $1 - $3; }
-  | expr '*' expr { $$ = $1 * $3; }
-  | expr '/' expr {
-        if ($3 == 0) {
-            fprintf(stderr, "Error: división por cero\n");
-            $$ = 0;
-        } else {
-            $$ = $1 / $3;
-        }
-    }
-  | NUMBER        { $$ = $1; }
-  | ID            {
-        int existe;
-        int val = obtener_valor_variable($1, &existe);
-        if (!existe) {
-            fprintf(stderr, "Error: variable '%s' no inicializada\n", $1);
-            val = 0;
-        }
-        $$ = val;
-        free($1);
-    }
-  | '(' expr ')'  { $$ = $2; }
-  ;
+      expr '+' expr      { $$ = $1 + $3; }
+    | expr '-' expr      { $$ = $1 - $3; }
+    | expr '*' expr      { $$ = $1 * $3; }
+    | expr '/' expr      { $$ = $1 / $3; }
+    | expr EQ expr       { $$ = ($1 == $3); }
+    | expr NOEQ expr     { $$ = ($1 != $3); }
+    | expr MEEQ expr     { $$ = ($1 <= $3); }
+    | expr MAEQ expr     { $$ = ($1 >= $3); }
+    | expr ME expr       { $$ = ($1 < $3); }
+    | expr MA expr       { $$ = ($1 > $3); }
+    | '(' expr ')'       { $$ = $2; }
+    | NUMBER             { $$ = $1; }
+
+    | ID { $$ = obtener_valor($1); }
+    ;
 
 %%
 
@@ -125,7 +127,6 @@ void yyerror(const char *s) {
 }
 
 int main() {
-    int res = yyparse();
-    liberar_variables();
-    return res;
+    printf("Bienvenido a jappcript!\n");
+    return yyparse();
 }

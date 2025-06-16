@@ -54,7 +54,7 @@ void asignar_variable(const char* nombre, int valor) {
 %token <id> ID
 
 %token IF ELSE
-%token DO WHILE
+%token WHILE FOR
 %token INTEGER STRING VOID
 %token AND OR
 %token EQ NOEQ MEEQ MAEQ ME MA
@@ -62,9 +62,10 @@ void asignar_variable(const char* nombre, int valor) {
 %token LPAREN RPAREN
 %token LLLAVE RLLAVE
 %token ASSIGN
-%token EVALUAR
 %token FUNCTION
+%token RETURN
 %token INPUT
+%token ';'
 
 
 %left '+' '-'
@@ -86,17 +87,33 @@ statements:
 
 statement:
     
-      IF LPAREN expr RPAREN block                        { printf("→ IF sin else (cond: %d)\n", $3); }
-    | IF LPAREN expr RPAREN block ELSE block             { printf("→ IF con else (cond: %d)\n", $3); }
-    | INTEGER ID ASSIGN expr ';'                         { asignar_variable($2, $4); }
-    | ID ASSIGN expr ';'                                 { asignar_variable($1, $3);}
-    | PRINT LPAREN expr RPAREN ';'                       { printf("→ Imprimir: %d\n", $3); }
+      IF LPAREN expr RPAREN block                        {printf("IF sin else (cond: %d)\n", $3);}
+    | IF LPAREN expr RPAREN block ELSE block             {printf("IF con else (cond: %d)\n", $3);}
+    | INTEGER ID ASSIGN expr ';'                         {asignar_variable($2, $4);}
+    | ID ASSIGN expr ';'                                 {asignar_variable($1, $3);}
+    | STRING ID ASSIGN expr ';'                          {printf("Asignacion de string\n");}
+    | VOID ID ';'                                        {printf("Declaracion de void '%s'\n", $2); free($2);}
+    | WHILE LPAREN expr RPAREN block
+    | FOR LPAREN statement expr ';' expr ';' expr statement RPAREN block
+    | PRINT LPAREN expr RPAREN ';'                       {printf("Imprimir: %d\n", $3);}
     | INPUT LPAREN ID RPAREN ';' {
         int val;
         printf("Ingrese valor para %s: ", $3);
         scanf("%d", &val);
         asignar_variable($3, val);
+        free($3);
       }
+    | RETURN expr ';'
+    | function_dec
+    ;
+
+function_dec:
+    FUNCTION return_tipo ID LPAREN RPAREN block;
+
+return_tipo:
+    VOID        { $$ = "void";}
+    | INTEGER   { $$ = "integer";}
+    | STRING    { $$ = "string";}
     ;
 
 block:
@@ -107,13 +124,21 @@ expr:
       expr '+' expr      { $$ = $1 + $3; }
     | expr '-' expr      { $$ = $1 - $3; }
     | expr '*' expr      { $$ = $1 * $3; }
-    | expr '/' expr      { $$ = $1 / $3; }
+    | expr '/' expr      { 
+        if ($3 == 0){
+            yyerror("Invalido, division por cero");
+            $$ = 0;
+        } else {
+            $$ = $1 / $3;
+        } }
     | expr EQ expr       { $$ = ($1 == $3); }
     | expr NOEQ expr     { $$ = ($1 != $3); }
     | expr MEEQ expr     { $$ = ($1 <= $3); }
     | expr MAEQ expr     { $$ = ($1 >= $3); }
     | expr ME expr       { $$ = ($1 < $3); }
     | expr MA expr       { $$ = ($1 > $3); }
+    | expr AND expr      { $$ = ($1 && $3); }
+    | expr OR expr       { $$ = ($1 || $3); }
     | '(' expr ')'       { $$ = $2; }
     | NUMBER             { $$ = $1; }
 

@@ -10,15 +10,13 @@
 "else"      {return ELSE;}
 "if"        {return IF;}
 "while"     {return WHILE;}
-"for"       {return FOR;}
 "integer"   {return INTEGER;}
 "string"    {return STRING;}
-"float"     {return FLOAT;}
 "void"      {return VOID;}
 "and"       {return AND;}
 "or"        {return OR;}
 "input"     {return INPUT;}
-"return"    {return RETURN;}
+
 
 "=="        {return EQ;}
 "!="        {return NOEQ;}

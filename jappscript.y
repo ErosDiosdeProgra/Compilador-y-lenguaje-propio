@@ -7,6 +7,58 @@
 void yyerror(const char *s);
 int yylex(void);
 
+typedef struct ASTNodeList {
+    struct ASTNode* stmt;
+    struct ASTNodeList* next;
+} ASTNodeList;
+
+typedef struct ASTNode {
+    struct ASTNode* cond;
+    struct ASTNode* body;
+    ASTNodeList* stmts; 
+    int valor_constante;
+    char* nombre_variable; 
+    int (*eval)(struct ASTNode*);
+    void (*exec)(struct ASTNode*);
+} ASTNode;
+
+void exec_block(ASTNode* block) {
+    ASTNodeList* curr = block->stmts;
+    while (curr) {
+        if (curr->stmt && curr->stmt->exec)
+            curr->stmt->exec(curr->stmt);
+        curr = curr->next;
+    }
+}
+
+ASTNode* new_block_node(ASTNodeList* stmts) {
+    ASTNode* node = malloc(sizeof(ASTNode));
+    node->stmts = stmts;
+    node->exec = exec_block;
+    return node;
+}
+
+ASTNodeList* append_statement(ASTNodeList* list, ASTNode* stmt) {
+    ASTNodeList* new_node = malloc(sizeof(ASTNodeList));
+    new_node->stmt = stmt;
+    new_node->next = NULL;
+
+    if (!list) return new_node;
+
+    ASTNodeList* curr = list;
+    while (curr->next) curr = curr->next;
+    curr->next = new_node;
+    return list;
+}
+
+
+int eval_constante(ASTNode* node) {
+    return node->valor_constante;
+}
+
+ASTNode* new_while(ASTNode* cond, ASTNode* body);
+void ejecutar(ASTNode* node);
+
 typedef struct {
     char nombre[64];
     int valor;
@@ -44,15 +96,19 @@ void asignar_variable(const char* nombre, int valor) {
     }
 }
 
-typedef struct ASTNode {
-    struct ASTNode* cond; //condicional
-    struct ASTNode* body; //cuerpo del while
-    int (*eval)(struct ASTNode*);
-    void (*exec)(struct ASTNode*);
-} ASTNode;
+void exec_print(ASTNode* node) {
+    printf("%d\n", node->valor_constante);
+}
 
-ASTNode* new_while(ASTNode* cond; ASTNode* body);
-void ejecutar(ASTNode* node);
+void exec_input(ASTNode* node) {
+    int val;
+    printf("Ingrese valor para %s: ", node->nombre_variable);
+    scanf("%d", &val);
+    asignar_variable(node->nombre_variable, val);
+    free(node->nombre_variable);
+    node->nombre_variable = NULL;
+}
+
 
 %}
 
@@ -60,13 +116,15 @@ void ejecutar(ASTNode* node);
     int num;
     char* id;
     struct ASTNode* node;
+    struct ASTNodeList* list;
 }
+
 
 %token <num> NUMBER
 %token <id> ID
 
 %token IF ELSE
-%token WHILE FOR
+%token WHILE 
 %token INTEGER STRING VOID
 %token AND OR
 %token EQ NOEQ MEEQ MAEQ ME MA
@@ -74,8 +132,6 @@ void ejecutar(ASTNode* node);
 %token LPAREN RPAREN
 %token LLLAVE RLLAVE
 %token ASSIGN
-%token FUNCTION
-%token RETURN
 %token INPUT
 %token ';'
 
@@ -86,6 +142,8 @@ void ejecutar(ASTNode* node);
 
 %type <num> expr
 %type <node> block
+%type <node> statement_node
+%type <list> statements_ast
 
 %%
 
@@ -107,12 +165,14 @@ statement:
     | STRING ID ASSIGN expr ';'                          {printf("Asignacion de string\n");}
     | VOID ID ';'                                        {printf("Declaracion de void '%s'\n", $2); free($2);}
     | WHILE LPAREN expr RPAREN block {
-        ASTNode* cond_node = malloc(sizeof(ASTNode));
-        cond_node -> eval = [](ASTNode* n) {return $3;};
-        ASTNode* w = new_while(cond_node, $5);
-        ejecutar(w);
-    }
-    | FOR LPAREN statement expr ';' expr ';' expr statement RPAREN block
+                                    ASTNode* cond_node = malloc(sizeof(ASTNode));
+                                    cond_node->valor_constante = $3;
+                                    cond_node->eval = eval_constante;
+
+                                    ASTNode* w = new_while(cond_node, $5);
+                                    ejecutar(w);
+                                }
+
     | PRINT LPAREN expr RPAREN ';'                       {printf("Imprimir: %d\n", $3);}
     | INPUT LPAREN ID RPAREN ';' {
         int val;
@@ -121,22 +181,40 @@ statement:
         asignar_variable($3, val);
         free($3);
       }
-    | RETURN expr ';'
-    | function_dec
-    ;
-
-function_dec:
-    FUNCTION return_tipo ID LPAREN RPAREN block;
-
-return_tipo:
-    VOID        { $$ = "void";}
-    | INTEGER   { $$ = "integer";}
-    | STRING    { $$ = "string";}
-    ;
+    
 
 block:
-      LLLAVE statements RLLAVE
+      LLLAVE statements_ast RLLAVE      { $$ = new_block_node($2); }
     ;
+
+statements_ast:
+      /* vacío */                       { $$ = NULL; }
+    | statements_ast statement_node     { $$ = append_statement($1, $2); }
+    ;
+
+statement_node:
+      INTEGER ID ASSIGN expr ';' {
+          asignar_variable($2, $4);
+          $$ = NULL;
+      }
+    | ID ASSIGN expr ';' {
+          asignar_variable($1, $3);
+          $$ = NULL;
+      }
+    | PRINT LPAREN expr RPAREN ';' {
+          ASTNode* n = malloc(sizeof(ASTNode));
+          n->valor_constante = $3;
+          n->exec = exec_print;
+          $$ = n;
+      }
+    | INPUT LPAREN ID RPAREN ';' {
+          ASTNode* n = malloc(sizeof(ASTNode));
+          n->nombre_variable = $3;
+          n->exec = exec_input;
+          $$ = n;
+      }
+    ;
+
 
 expr:
       expr '+' expr      { $$ = $1 + $3;}
@@ -176,7 +254,7 @@ void ejecutar(ASTNode* node){
     if(!node) return;
     while(node -> cond -> eval(node -> cond)){
         if(node -> body && node -> body -> exec)
-            ndoe -> body -> exec(ndoe -> body);
+            node -> body -> exec(node -> body);
     }
 }
 

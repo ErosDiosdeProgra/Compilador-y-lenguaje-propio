@@ -25,7 +25,7 @@ int buscar_variable(const char* nombre) {
 int obtener_valor(const char* nombre) {
     int idx = buscar_variable(nombre);
     if (idx >= 0) return tabla_vars[idx].valor;
-    printf("→ Error: Variable '%s' no declarada. Se usa 0\n", nombre);
+    printf("- Error: Variable '%s' no declarada. Se usa 0\n", nombre);
     return 0;
 }
 
@@ -39,15 +39,27 @@ void asignar_variable(const char* nombre, int valor) {
             tabla_vars[num_vars].valor = valor;
             num_vars++;
         } else {
-            printf("→ Error: Límite de variables alcanzado\n");
+            printf("- Error: Límite de variables alcanzado\n");
         }
     }
 }
+
+typedef struct ASTNode {
+    struct ASTNode* cond; //condicional
+    struct ASTNode* body; //cuerpo del while
+    int (*eval)(struct ASTNode*);
+    void (*exec)(struct ASTNode*);
+} ASTNode;
+
+ASTNode* new_while(ASTNode* cond; ASTNode* body);
+void ejecutar(ASTNode* node);
+
 %}
 
 %union {
     int num;
     char* id;
+    struct ASTNode* node;
 }
 
 %token <num> NUMBER
@@ -73,6 +85,7 @@ void asignar_variable(const char* nombre, int valor) {
 %left EQ NOEQ MEEQ MAEQ ME MA
 
 %type <num> expr
+%type <node> block
 
 %%
 
@@ -87,13 +100,18 @@ statements:
 
 statement:
     
-      IF LPAREN expr RPAREN block                        {printf("IF sin else (cond: %d)\n", $3);}
-    | IF LPAREN expr RPAREN block ELSE block             {printf("IF con else (cond: %d)\n", $3);}
+      IF LPAREN expr RPAREN block                        {if($3) ejecutar($5);}
+    | IF LPAREN expr RPAREN block ELSE block             {if($3) ejecutar($5); else ejecutar($7);}
     | INTEGER ID ASSIGN expr ';'                         {asignar_variable($2, $4);}
     | ID ASSIGN expr ';'                                 {asignar_variable($1, $3);}
     | STRING ID ASSIGN expr ';'                          {printf("Asignacion de string\n");}
     | VOID ID ';'                                        {printf("Declaracion de void '%s'\n", $2); free($2);}
-    | WHILE LPAREN expr RPAREN block
+    | WHILE LPAREN expr RPAREN block {
+        ASTNode* cond_node = malloc(sizeof(ASTNode));
+        cond_node -> eval = [](ASTNode* n) {return $3;};
+        ASTNode* w = new_while(cond_node, $5);
+        ejecutar(w);
+    }
     | FOR LPAREN statement expr ';' expr ';' expr statement RPAREN block
     | PRINT LPAREN expr RPAREN ';'                       {printf("Imprimir: %d\n", $3);}
     | INPUT LPAREN ID RPAREN ';' {
@@ -121,31 +139,46 @@ block:
     ;
 
 expr:
-      expr '+' expr      { $$ = $1 + $3; }
-    | expr '-' expr      { $$ = $1 - $3; }
-    | expr '*' expr      { $$ = $1 * $3; }
+      expr '+' expr      { $$ = $1 + $3;}
+    | expr '-' expr      { $$ = $1 - $3;}
+    | expr '*' expr      { $$ = $1 * $3;}
     | expr '/' expr      { 
         if ($3 == 0){
             yyerror("Invalido, division por cero");
             $$ = 0;
         } else {
             $$ = $1 / $3;
-        } }
-    | expr EQ expr       { $$ = ($1 == $3); }
-    | expr NOEQ expr     { $$ = ($1 != $3); }
-    | expr MEEQ expr     { $$ = ($1 <= $3); }
-    | expr MAEQ expr     { $$ = ($1 >= $3); }
-    | expr ME expr       { $$ = ($1 < $3); }
-    | expr MA expr       { $$ = ($1 > $3); }
-    | expr AND expr      { $$ = ($1 && $3); }
-    | expr OR expr       { $$ = ($1 || $3); }
-    | '(' expr ')'       { $$ = $2; }
-    | NUMBER             { $$ = $1; }
+        }}
+    | expr EQ expr       { $$ = ($1 == $3);}
+    | expr NOEQ expr     { $$ = ($1 != $3);}
+    | expr MEEQ expr     { $$ = ($1 <= $3);}
+    | expr MAEQ expr     { $$ = ($1 >= $3);}
+    | expr ME expr       { $$ = ($1 < $3);}
+    | expr MA expr       { $$ = ($1 > $3);}
+    | expr AND expr      { $$ = ($1 && $3);}
+    | expr OR expr       { $$ = ($1 || $3);}
+    | '(' expr ')'       { $$ = $2;}
+    | NUMBER             { $$ = $1;}
 
-    | ID { $$ = obtener_valor($1); }
+    | ID { $$ = obtener_valor($1); free($1);}
     ;
 
 %%
+
+ASTNode* new_while (ASTNode* cond, ASTNode* body){
+    ASTNode* w = malloc(sizeof(ASTNode));
+    w -> cond = cond;
+    w -> body = body;
+    return w;
+}
+
+void ejecutar(ASTNode* node){
+    if(!node) return;
+    while(node -> cond -> eval(node -> cond)){
+        if(node -> body && node -> body -> exec)
+            ndoe -> body -> exec(ndoe -> body);
+    }
+}
 
 void yyerror(const char *s) {
     fprintf(stderr, "Error de sintaxis: %s\n", s);

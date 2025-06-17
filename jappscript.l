@@ -4,12 +4,16 @@
 #include <stdlib.h>
 %}
 
+DIGIT       [0-9]
+FLOAT       {DIGIT}+"."{DIGIT}+
+
 %%
 
 "print"     {return PRINT;}
 "else"      {return ELSE;}
 "if"        {return IF;}
 "while"     {return WHILE;}
+"float"     {return FLOAT;}
 "integer"   {return INTEGER;}
 "string"    {return STRING;}
 "void"      {return VOID;}
@@ -40,7 +44,7 @@
 [ \t\n]+    ; // Ignorar espacios
 
 [0-9]+      { yylval.num = atoi(yytext); return NUMBER;}
-
+FLOAT       { yylval.fval = atof(yytex); return FLOAT_NUM;}
 [a-zA-Z_][a-zA-Z0-9_]* { yylval.id = strdup(yytext); return ID;}
 
 .           { printf("Caracter no válido: %s\n", yytext);}

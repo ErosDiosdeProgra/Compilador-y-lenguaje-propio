@@ -22,6 +22,21 @@ typedef struct ASTNode {
     void (*exec)(struct ASTNode*);
 } ASTNode;
 
+typedef struct {
+    char* nombre_variable;
+} ExprVarData;
+
+int eval_variable(ASTNode* node){
+    return obtener_valor(node -> nombre_variable);
+}
+
+ASTNode* new_variable_eval_mode(char* nombre){
+    ASTNode* node = malloc(sizeof(ASTNode));
+    node -> nombre_variable =nombre;
+    node -> eval = eval_variable;
+    return node;
+}
+
 void exec_block(ASTNode* block) {
     ASTNodeList* curr = block->stmts;
     while (curr) {
@@ -114,6 +129,7 @@ void exec_input(ASTNode* node) {
 
 %union {
     int num;
+    float fval;
     char* id;
     struct ASTNode* node;
     struct ASTNodeList* list;
@@ -121,6 +137,7 @@ void exec_input(ASTNode* node) {
 
 
 %token <num> NUMBER
+%token <fval> FLOAT_NUM
 %token <id> ID
 
 %token IF ELSE
@@ -141,9 +158,11 @@ void exec_input(ASTNode* node) {
 %left EQ NOEQ MEEQ MAEQ ME MA
 
 %type <num> expr
+%type <fval> expr
 %type <node> block
 %type <node> statement_node
 %type <list> statements_ast
+%type <node> expr_node
 
 %%
 
@@ -165,13 +184,9 @@ statement:
     | STRING ID ASSIGN expr ';'                          {printf("Asignacion de string\n");}
     | VOID ID ';'                                        {printf("Declaracion de void '%s'\n", $2); free($2);}
     | WHILE LPAREN expr RPAREN block {
-                                    ASTNode* cond_node = malloc(sizeof(ASTNode));
-                                    cond_node->valor_constante = $3;
-                                    cond_node->eval = eval_constante;
-
-                                    ASTNode* w = new_while(cond_node, $5);
-                                    ejecutar(w);
-                                }
+        ASTNode* w = new_while($3, $5);
+        ejecutar(w);
+     }
 
     | PRINT LPAREN expr RPAREN ';'                       {printf("Imprimir: %d\n", $3);}
     | INPUT LPAREN ID RPAREN ';' {
@@ -215,6 +230,28 @@ statement_node:
       }
     ;
 
+expr_node:
+    NUMBER {
+        ASTNode* n = malloc(sizeof(ASTNode));
+        n -> valor_constante = $1;
+        n -> eval = eval_constante;
+        $$ = n;
+    }
+    | ID {
+        ASTNode* n = malloc(sizeof(ASTNode));
+        n -> valor_constante = $1;
+        n -> eval = eval_variable;
+        $$ = n; 
+    }
+    | expr_node EQ expr_node {
+        ASTNode* n = malloc(sizeof(ASTNode));
+        n -> cond = $1;
+        n -> body = $3;
+        n -> eval = [](ASTNode* node){
+            return node -> cond -> eval(node -> cond) == node -> body -> eval(node -> body);
+        };
+        $$ = n;
+    }
 
 expr:
       expr '+' expr      { $$ = $1 + $3;}
@@ -237,7 +274,7 @@ expr:
     | expr OR expr       { $$ = ($1 || $3);}
     | '(' expr ')'       { $$ = $2;}
     | NUMBER             { $$ = $1;}
-
+    | FLOAT_NUM          { $$ = $1;}
     | ID { $$ = obtener_valor($1); free($1);}
     ;
 
